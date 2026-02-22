@@ -140,7 +140,6 @@
             border: 1px solid rgba(255,255,255,0.8);
             animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); 
         }
-        @keyframes popIn { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
         .falling-flag {
             position: absolute;
@@ -169,6 +168,7 @@
             display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); 
             width: 85%; max-width: 320px; background: white; border-radius: 20px; padding: 25px; 
             z-index: 1000; pointer-events: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+            max-height: 85vh; overflow-y: auto; /* kichik ekranlar uchun skroll */
         }
         .modal-title { text-align: center; font-family: 'Orbitron'; font-size: 18px; margin-bottom: 20px; color: var(--primary); }
         .control-group { margin-bottom: 15px; }
@@ -205,7 +205,6 @@
         <h3 style="margin:0; color: var(--accent); font-family: 'Orbitron'; letter-spacing: 1px; font-size: 14px;">WINNER!</h3>
         <img id="winner-flag" src="">
         <span id="winner-name"></span>
-        <!-- AUTO RESTART BUTTON -->
         <button id="restart-btn" class="action-btn" onclick="restartGame()">NEXT ROUND (6s)</button>
     </div>
 </div>
@@ -226,6 +225,14 @@
     <div class="control-group">
         <label style="font-size:12px; font-weight:bold;">Bayroqlar: <span id="ball-count-val">100</span></label>
         <input type="range" id="ball-count" min="10" max="200" value="100" oninput="document.getElementById('ball-count-val').innerText=this.value">
+    </div>
+    <div class="control-group">
+        <label style="font-size:12px; font-weight:bold;">Aylana o'lchami: <span id="arena-scale-val" style="color:var(--primary)">1.0x</span></label>
+        <input type="range" id="arena-scale-control" min="0.5" max="2.0" step="0.1" value="1.0" oninput="document.getElementById('arena-scale-val').innerText = this.value + 'x'">
+    </div>
+    <div class="control-group">
+        <label style="font-size:12px; font-weight:bold;">Bayroq o'lchami: <span id="flag-scale-val" style="color:var(--primary)">1.0x</span></label>
+        <input type="range" id="flag-scale-control" min="0.5" max="2.5" step="0.1" value="1.0" oninput="document.getElementById('flag-scale-val').innerText = this.value + 'x'">
     </div>
     <div class="control-group">
         <label style="font-size:12px; font-weight:bold;">Tezlik: <span id="speed-val" style="color:var(--primary)">1.0x</span></label>
@@ -268,7 +275,8 @@
         constraintIterations: 2 
     });
     
-    let userSettings = { ballCount: 100, musicVolume: 0.15, sfxVolume: 0.30, speedMultiplier: 1.0 };
+    // Sozlamalarga yangi parametrlar (arenaScale va flagScale) qo'shildi
+    let userSettings = { ballCount: 100, musicVolume: 0.15, sfxVolume: 0.30, speedMultiplier: 1.0, arenaScale: 1.0, flagScale: 1.0 };
     let winStats = {}; 
     let render, runner, wheel, balls = [], isPlaying = false;
     let customMusicSrc = null;
@@ -276,12 +284,11 @@
     let bgMusic1 = document.getElementById('bgMusic1');
     let bgMusic2 = document.getElementById('bgMusic2');
     
-    // AUTO RESTART TIMER
     let autoRestartTimer = null;
     let countdownInterval = null;
 
     const BASE_SPEED = 2.8; 
-    let CONFIG = { ringRadius: Math.min(window.innerWidth/2-25,175), ballSize: window.innerWidth<768?8.5:10.5, targetSpeed: BASE_SPEED, rotationSpeed: 0.012, gravityValue: 1.0 };
+    let CONFIG = { targetSpeed: BASE_SPEED, rotationSpeed: 0.012, gravityValue: 1.0, ringRadius: 150, ballSize: 10 };
 
     bgMusic1.volume = userSettings.musicVolume; 
     bgMusic2.volume = userSettings.musicVolume;
@@ -336,6 +343,11 @@
         try {
             const countInput = document.getElementById('ball-count');
             userSettings.ballCount = countInput ? (parseInt(countInput.value) || 100) : 100;
+            
+            // O'lchamlarni saqlash
+            userSettings.arenaScale = parseFloat(document.getElementById('arena-scale-control').value);
+            userSettings.flagScale = parseFloat(document.getElementById('flag-scale-control').value);
+
             if (customMusicSrc) { 
                 bgMusic1.src = customMusicSrc; 
                 currentBgMusic = bgMusic1; 
@@ -372,7 +384,6 @@
     
     function restartGame() {
         try {
-            // Avtomatik restart timerni tozalash
             if(autoRestartTimer) clearTimeout(autoRestartTimer);
             if(countdownInterval) clearInterval(countdownInterval);
 
@@ -396,7 +407,6 @@
             document.getElementById('fallen-container').innerHTML = ''; 
             
             if(ctx) ctx.clearRect(0,0,confettiCanvas.width,confettiCanvas.height);
-            
             bgMusic1.pause(); bgMusic2.pause(); 
             
             setTimeout(() => { 
@@ -438,6 +448,13 @@
     ];
 
     function init() {
+        // Dinamik o'lchamlarni hisoblash
+        const baseRingRadius = Math.min(window.innerWidth/2-25, 175);
+        const baseBallSize = window.innerWidth < 768 ? 8.5 : 10.5;
+        
+        CONFIG.ringRadius = baseRingRadius * userSettings.arenaScale;
+        CONFIG.ballSize = baseBallSize * userSettings.flagScale;
+
         engine.gravity.y = CONFIG.gravityValue;
         Events.on(engine, 'collisionStart', (e) => { const p=e.pairs; for(let i=0;i<p.length;i++){if(p[i].bodyA.speed+p[i].bodyB.speed>1.5)playCollisionSound(p[i].bodyA.speed+p[i].bodyB.speed);} });
         render = Render.create({ element: document.body, engine: engine, options: { width: window.innerWidth, height: window.innerHeight, wireframes: false, background: 'transparent', pixelRatio: 1 } });
@@ -449,7 +466,12 @@
         Composite.add(engine.world, [floor,wallL,wallR]);
 
         wheel = Composite.create();
-        const seg=80, gap=9;
+        
+        // Aylana teshiklari bo'lmasligi uchun segmentlarni (bo'laklarni) avtomatik hisoblash
+        const circumference = 2 * Math.PI * CONFIG.ringRadius;
+        const seg = Math.max(40, Math.floor(circumference / 14)); // Kattalashganda bo'laklarni ko'paytiramiz
+        const gap = Math.max(4, Math.floor(seg * 0.11)); // Teshik foizini saqlaymiz
+        
         for(let i=0;i<seg-gap;i++){
             const a=(i/seg)*Math.PI*2;
             const w=Bodies.rectangle(cx+Math.cos(a)*CONFIG.ringRadius, cy+Math.sin(a)*CONFIG.ringRadius, 22, 6, {isStatic:true, angle:a+Math.PI/2, render:{fillStyle:'#0f172a'}, restitution:1.0});
@@ -462,7 +484,7 @@
         const sel=shuf.slice(0,count);
 
         sel.forEach(c=>{
-            const b=Bodies.circle(cx+(Math.random()-0.5)*130, cy+(Math.random()-0.5)*130, CONFIG.ballSize, {
+            const b=Bodies.circle(cx+(Math.random()-0.5)*(CONFIG.ringRadius*0.7), cy+(Math.random()-0.5)*(CONFIG.ringRadius*0.7), CONFIG.ballSize, {
                 restitution:0.95, friction:0, frictionAir:0, inertia:Infinity,
                 render:{sprite:{texture:`https://flagcdn.com/w160/${c.code}.png`, xScale:(CONFIG.ballSize*2.5)/160, yScale:(CONFIG.ballSize*2.5)/160}},
                 label:c.name
@@ -571,7 +593,6 @@
         speakText(b.label + " Wins!");
         setTimeout(() => { if (!isMuted) playVictorySound(); startConfetti(); }, 800);
 
-        // --- AVTOMATIK RESTART TIZIMI ---
         const restartBtn = document.getElementById('restart-btn');
         let timeLeft = 6;
         restartBtn.innerText = `NEXT ROUND (${timeLeft}s)`;
